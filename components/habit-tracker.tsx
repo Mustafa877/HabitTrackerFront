@@ -1,9 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClient } from '@supabase/supabase-js'
-import { Auth } from '@supabase/auth-ui-react'
-import { ThemeSupa } from '@supabase/auth-ui-shared'
 import { Plus, Trash2, Languages, Moon, Sun, RotateCcw, Heart, Lightbulb, Bell, BellOff, X, ArrowUp, LogOut } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,17 +26,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { api } from "@/lib/api"
+import { AuthForm } from "./auth-form"
 
 // Initialize Supabase client
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
 
 interface Habit {
   id: string
+  userId: string
   name: string
-  days_count: number
-  is_healthy: boolean
-  creation_date: Date
-  last_congratulated: {
+  daysCount: number
+  isHealthy: boolean
+  creationDate: Date
+  lastCongratulated: {
     week: number
     twoWeeks: number
     threeWeeks: number
@@ -49,13 +49,9 @@ interface Habit {
 
 type User = {
   id: string;
-  email?: string;
-  user_metadata?: {
-    avatar_url?: string;
-    full_name?: string;
-    name?: string;
-  };
-  // Add other relevant user properties here
+  email: string;
+  fullName: string;
+  avatarUrl?: string;
 };
 
 type Language = "en" | "ar"
@@ -238,23 +234,7 @@ export function HabitTracker() {
 
   const t = translations[lang]
 
-  const fetchAvatarUrl = useCallback(async (userId: string) => {
-    if (user?.user_metadata?.avatar_url) {
-      setAvatarUrl(user.user_metadata.avatar_url);
-    } else {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('avatar_url')
-        .eq('id', userId)
-        .single();
 
-      if (error) {
-        console.error('Error fetching avatar URL:', error);
-      } else if (data?.avatar_url) {
-        setAvatarUrl(data.avatar_url);
-      }
-    }
-  }, [user]);
 
   useEffect(() => {
     const storedLang = localStorage.getItem("lang") as Language
@@ -287,27 +267,16 @@ export function HabitTracker() {
     document.head.appendChild(link)
 
     // Check user session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user as User | null)
-      if (session?.user) {
-        fetchHabits(session.user.id)
-        fetchAvatarUrl(session.user.id)
-      }
-    })
+    const token = localStorage.getItem("token")
+    const storedUser = localStorage.getItem("user")
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser))
+      fetchHabits()
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user as User | null)
-      if (session?.user) {
-        fetchHabits(session.user.id)
-        fetchAvatarUrl(session.user.id)
-      } else {
-        setHabits([])
-        setAvatarUrl(null)
-      }
-    })
 
-    return () => subscription.unsubscribe()
-  }, [fetchAvatarUrl])
+
+  }, [])
 
   useEffect(() => {
     localStorage.setItem("lang", lang)
@@ -357,16 +326,13 @@ export function HabitTracker() {
     }
   }, [remindersEnabled, t.reminderMessage])
 
-  const fetchHabits = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('habits')
-      .select('*')
-      .eq('user_id', userId)
-    
-    if (error) {
+  const fetchHabits = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const data = await api.get("/habits", token!)
+      setHabits(data)
+    } catch (error) {
       console.error('Error fetching habits:', error)
-    } else {
-      setHabits(data || [])
     }
   }
 
@@ -378,29 +344,16 @@ export function HabitTracker() {
       return
     }
     if (newHabit.trim() !== "") {
-      const habit = { 
-        user_id: user.id,
+      const habit = {
         name: newHabit,
-        days_count: 1, 
-        is_healthy: isHealthy,
-        creation_date: new Date(),
-        last_congratulated: {
-          week: 0,
-          twoWeeks: 0,
-          threeWeeks: 0,
-          month: 0
-        }
+        isHealthy: isHealthy,
       }
-      const { data, error } = await supabase
-        .from('habits')
-        .insert([habit])
-        .select()
 
-      if (error) {
-        console.error('Error adding habit:', error)
-        toast.error(error.message, { duration: 2000 })
-      } else if (data) {
-        setHabits([...habits, data[0]])
+      try {
+        const token = localStorage.getItem("token")
+        const newHabitData = await api.post("/habits", habit, token!)
+
+        setHabits([...habits, newHabitData])
         toast.success(t.habitAdded, {
           duration: 2000,
           icon: '🎉',
@@ -409,6 +362,9 @@ export function HabitTracker() {
         setIsHealthy(false)
         setCurrentPage(Math.ceil((habits.length + 1) / ITEMS_PER_PAGE))
         setFilter("all")
+      } catch (error: any) {
+        console.error('Error adding habit:', error)
+        toast.error(error.message, { duration: 2000 })
       }
     } else {
       toast.error(t.enterHabitError, { duration: 2000 })
@@ -422,18 +378,16 @@ export function HabitTracker() {
 
   const confirmDelete = async () => {
     if (habitToDelete !== null) {
-      const { error } = await supabase
-        .from('habits')
-        .delete()
-        .eq('id', habitToDelete)
+      try {
+        const token = localStorage.getItem("token")
+        await api.delete(`/habits/${habitToDelete}`, token!)
 
-      if (error) {
-        console.error('Error deleting habit:', error)
-        toast.error(error.message, { duration: 2000 })
-      } else {
         const updatedHabits = habits.filter((habit) => habit.id !== habitToDelete)
         setHabits(updatedHabits)
         toast(t.habitRemoved, { icon: "🗑️", duration: 2000 })
+      } catch (error: any) {
+        console.error('Error deleting habit:', error)
+        toast.error(error.message, { duration: 2000 })
       }
       setDeleteConfirmOpen(false)
       setHabitToDelete(null)
@@ -447,17 +401,14 @@ export function HabitTracker() {
   const confirmReset = async () => {
     if (!user) return
 
-    const { error } = await supabase
-      .from('habits')
-      .delete()
-      .eq('user_id', user.id)
-
-    if (error) {
-      console.error('Error resetting habits:', error)
-      toast.error(error.message, { duration: 2000 })
-    } else {
+    try {
+      const token = localStorage.getItem("token")
+      await api.delete("/habits", token!)
       setHabits([])
       toast.success(t.habitRemoved, { duration: 2000 })
+    } catch (error: any) {
+      console.error('Error resetting habits:', error)
+      toast.error(error.message, { duration: 2000 })
     }
     setResetConfirmOpen(false)
   }
@@ -466,10 +417,10 @@ export function HabitTracker() {
     const habitToUpdate = habits.find(habit => habit.id === id)
     if (!habitToUpdate) return
 
-    const newDaysCount = habitToUpdate.days_count + 1
+    const newDaysCount = habitToUpdate.daysCount + 1
     const now = Date.now()
     let congratMessage = ''
-    const lastCongratulated = { ...habitToUpdate.last_congratulated }
+    const lastCongratulated = { ...habitToUpdate.lastCongratulated }
 
     if (newDaysCount === 7 && now - lastCongratulated.week > 7 * 24 * 60 * 60 * 1000) {
       congratMessage = t.congratulationsWeek
@@ -485,18 +436,17 @@ export function HabitTracker() {
       lastCongratulated.month = now
     }
 
-    const { data, error } = await supabase
-      .from('habits')
-      .update({ days_count: newDaysCount, last_congratulated: lastCongratulated })
-      .eq('id', id)
-      .select()
+    try {
+      const token = localStorage.getItem("token")
+      const updatedHabit = {
+        daysCount: newDaysCount,
+        lastCongratulated: lastCongratulated
+      }
 
-    if (error) {
-      console.error('Error updating habit:', error)
-      toast.error(error.message, { duration: 2000 })
-    } else if (data) {
-      const updatedHabits = habits.map(habit => 
-        habit.id === id ? { ...habit, days_count: newDaysCount, last_congratulated: lastCongratulated } : habit
+      await api.put(`/habits/${id}`, updatedHabit, token!)
+
+      const updatedHabits = habits.map(habit =>
+        habit.id === id ? { ...habit, daysCount: newDaysCount, lastCongratulated: lastCongratulated } : habit
       )
       setHabits(updatedHabits)
 
@@ -506,45 +456,51 @@ export function HabitTracker() {
           icon: '🎉',
         })
       }
+    } catch (error: any) {
+      console.error('Error updating habit:', error)
+      toast.error(error.message, { duration: 2000 })
     }
   }
 
   const decrementDays = async (id: string) => {
     const habitToUpdate = habits.find(habit => habit.id === id)
-    if (!habitToUpdate || habitToUpdate.days_count <= 0) return
+    if (!habitToUpdate || habitToUpdate.daysCount <= 0) return
 
-    const { data, error } = await supabase
-      .from('habits')
-      .update({ days_count: habitToUpdate.days_count - 1 })
-      .eq('id', id)
-      .select()
+    try {
+      const token = localStorage.getItem("token")
+      const updatedHabit = {
+        daysCount: habitToUpdate.daysCount - 1,
+        lastCongratulated: habitToUpdate.lastCongratulated
+      }
 
-    if (error) {
-      console.error('Error updating habit:', error)
-      toast.error(error.message, { duration: 2000 })
-    } else if (data) {
-      const updatedHabits = habits.map(habit => 
-        habit.id === id ? { ...habit, days_count: habit.days_count - 1 } : habit
+      await api.put(`/habits/${id}`, updatedHabit, token!)
+
+      const updatedHabits = habits.map(habit =>
+        habit.id === id ? { ...habit, daysCount: habit.daysCount - 1 } : habit
       )
       setHabits(updatedHabits)
+    } catch (error: any) {
+      console.error('Error updating habit:', error)
+      toast.error(error.message, { duration: 2000 })
     }
   }
 
   const incrementAllDays = async () => {
     if (!user) return
 
-    const { error } = await supabase.rpc('increment_all_habits', { user_id: user.id })
+    try {
+      const token = localStorage.getItem("token")
+      await api.post("/habits/increment-all", {}, token!)
 
-    if (error) {
-      console.error('Error incrementing all habits:', error)
-      toast.error(error.message, { duration: 2000 })
-    } else {
-      const updatedHabits = habits.map(habit => ({ ...habit, days_count: habit.days_count + 1 }))
+      const updatedHabits = habits.map(habit => ({ ...habit, daysCount: habit.daysCount + 1 }))
       setHabits(updatedHabits)
       toast.success(t.allHabitsIncreased, {
         duration: 2000,
         icon: '🎉',
       })
+    } catch (error: any) {
+      console.error('Error incrementing all habits:', error)
+      toast.error(error.message, { duration: 2000 })
     }
   }
 
@@ -597,8 +553,8 @@ export function HabitTracker() {
 
   const filteredHabits = habits.filter((habit) => {
     if (filter === "all") return true;
-    if (filter === "healthy") return habit.is_healthy;
-    if (filter === "unhealthy") return !habit.is_healthy;
+    if (filter === "healthy") return habit.isHealthy;
+    if (filter === "unhealthy") return !habit.isHealthy;
     return true;
   });
 
@@ -608,129 +564,144 @@ export function HabitTracker() {
   const handleNextPage = () => setCurrentPage((prev) => Math.min(prev + 1, totalPages))
   const handlePreviousPage = () => setCurrentPage((prev) => Math.max(prev - 1, 1))
 
-  const signOut = async () => {
-    await supabase.auth.signOut()
+  const signOut = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    setUser(null)
+    setHabits([])
   }
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-        <div className="w-full max-w-md p-8 space-y-8 bg-white dark:bg-gray-800 rounded-xl shadow-md">
-          <h1 className="text-3xl font-bold text-center text-gray-900 dark:text-white">{t.title}</h1>
-          <Auth
-            supabaseClient={supabase}
-            appearance={{
-              theme: ThemeSupa,
-              variables: {
-                default: {
-                  colors: {
-                    brand: 'rgb(19, 19, 19)',
-                    brandAccent: 'rgb(34, 34, 34)',
-                  },
-                },
-              },
-            }}
-            theme={theme}
-            providers={['google']}
-            view="magic_link"
-            localization={{
-              variables: {
-                sign_up: {
-                  email_label: lang === 'ar' ? 'البريد الإلكتروني' : 'Email',
-                  password_label: lang === 'ar' ? 'كلمة المرور' : 'Password',
-                  button_label: lang === 'ar' ? 'إنشاء حساب' : 'Sign up',
-                },
-                sign_in: {
-                  email_label: lang === 'ar' ? 'البريد الإلكتروني' : 'Email',
-                  password_label: lang === 'ar' ? 'كلمة المرور' : 'Password',
-                  button_label: lang === 'ar' ? 'تسجيل الدخول' : 'Sign in',
-                },
-              },
-            }}
-          />
+      <div className={`flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 ${lang === "ar" ? "font-arabic" : ""}`}>
+        <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 shadow-md p-2 sm:p-4">
+          <div className="container mx-auto flex justify-between items-center">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white transition-colors duration-300">
+              {t.title}
+            </h1>
+            <div className="flex items-center space-x-2 sm:space-x-4 rtl:space-x-reverse">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleLanguage} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleLanguage}>
+                      <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t.toggleLanguage}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleTheme} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleTheme}>
+                      {theme === "light" ? <Moon className="h-4 w-4 sm:h-5 sm:w-5" /> : <Sun className="h-4 w-4 sm:h-5 sm:w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t.toggleTheme}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        </header>
+        <div className="flex-grow flex items-center justify-center p-4">
+          <div className="w-full max-w-md p-8 space-y-8 bg-white dark:bg-gray-800 rounded-xl shadow-md">
+            <h1 className="text-3xl font-bold text-center text-gray-900 dark:text-white">{t.title}</h1>
+            <AuthForm
+              lang={lang}
+              onSuccess={(token, user) => {
+                localStorage.setItem("token", token)
+                localStorage.setItem("user", JSON.stringify(user))
+                setUser(user)
+                fetchHabits()
+              }}
+            />
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 ${
-      lang === "ar" ? "font-arabic" : ""
-    }`}>
+    <div className={`flex flex-col min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300 ${lang === "ar" ? "font-arabic" : ""
+      }`}>
       <header className="sticky top-0 z-10 bg-white dark:bg-gray-800 shadow-md p-2 sm:p-4">
-  <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center">
-    <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white transition-colors duration-300 mb-2 sm:mb-0">
-      {t.title}
-    </h1>
-    <div className="flex items-center space-x-2 sm:space-x-4 rtl:space-x-reverse">
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" className="p-1 sm:p-2">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
-                <AvatarImage src={avatarUrl || undefined} alt="User avatar" />
-                <AvatarFallback>{user?.user_metadata?.full_name?.[0] || user?.email?.[0].toUpperCase()}</AvatarFallback>
-              </Avatar>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{user?.user_metadata?.full_name || user?.email || 'User'}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <div className="flex space-x-1 sm:space-x-2 rtl:space-x-reverse">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={toggleLanguage} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleLanguage}>
-                <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t.toggleLanguage}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={toggleTheme} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleTheme}>
-                {theme === "light" ? <Moon className="h-4 w-4 sm:h-5 sm:w-5" /> : <Sun className="h-4 w-4 sm:h-5 sm:w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t.toggleTheme}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={toggleReminders} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={remindersEnabled ? t.disableReminders : t.enableReminders}>
-                {remindersEnabled ? <BellOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Bell className="h-4 w-4 sm:h-5 sm:w-5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{remindersEnabled ? t.disableReminders : t.enableReminders}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={signOut} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.signOut}>
-                <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t.signOut}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    </div>
-  </div>
-</header>
+        <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white transition-colors duration-300 mb-2 sm:mb-0">
+            {t.title}
+          </h1>
+          <div className="flex items-center space-x-2 sm:space-x-4 rtl:space-x-reverse">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" className="p-1 sm:p-2">
+                    <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
+                      <AvatarImage src={avatarUrl || user?.avatarUrl} alt="User avatar" />
+                      <AvatarFallback>{user?.fullName?.[0] || user?.email?.[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{user?.fullName || user?.email || 'User'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <div className="flex space-x-1 sm:space-x-2 rtl:space-x-reverse">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleLanguage} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleLanguage}>
+                      <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t.toggleLanguage}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleTheme} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.toggleTheme}>
+                      {theme === "light" ? <Moon className="h-4 w-4 sm:h-5 sm:w-5" /> : <Sun className="h-4 w-4 sm:h-5 sm:w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t.toggleTheme}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={toggleReminders} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={remindersEnabled ? t.disableReminders : t.enableReminders}>
+                      {remindersEnabled ? <BellOff className="h-4 w-4 sm:h-5 sm:w-5" /> : <Bell className="h-4 w-4 sm:h-5 sm:w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{remindersEnabled ? t.disableReminders : t.enableReminders}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button onClick={signOut} variant="outline" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" aria-label={t.signOut}>
+                      <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t.signOut}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        </div>
+      </header>
       <main className="flex-grow p-4 md:p-6 container mx-auto max-w-4xl">
         <Toaster
           position="bottom-center"
@@ -761,9 +732,8 @@ export function HabitTracker() {
           <Button
             onClick={toggleIsHealthy}
             variant="outline"
-            className={`w-full justify-start text-left font-normal ${
-              isHealthy ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800' : 'bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800'
-            }`}
+            className={`w-full justify-start text-left font-normal ${isHealthy ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800' : 'bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800'
+              }`}
           >
             {isHealthy ? (
               <>
@@ -804,7 +774,7 @@ export function HabitTracker() {
               <Card key={habit.id} className="flex flex-col shadow-md border rounded-lg transition-colors duration-300">
                 <CardHeader className="flex items-start justify-between space-y-0 pb-2">
                   <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white transition-colors duration-300 flex items-center">
-                    {habit.is_healthy && <Heart className="mr-2 rtl:ml-2 rtl:mr-0 h-4 w-4 text-green-500" />}
+                    {habit.isHealthy && <Heart className="mr-2 rtl:ml-2 rtl:mr-0 h-4 w-4 text-green-500" />}
                     {habit.name}
                   </CardTitle>
                   <Button
@@ -819,7 +789,7 @@ export function HabitTracker() {
                 <CardContent className="pt-0">
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-medium text-gray-700 dark:text-gray-300 transition-colors duration-300">
-                      {habit.is_healthy ? t.daysStreak : t.daysWithout} {habit.days_count}
+                      {habit.isHealthy ? t.daysStreak : t.daysWithout} {habit.daysCount}
                     </span>
                     <div className="flex space-x-2 rtl:space-x-reverse">
                       <Button onClick={() => decrementDays(habit.id)} aria-label={`Decrease days for ${habit.name}`} variant="outline" size="sm">
@@ -830,12 +800,12 @@ export function HabitTracker() {
                       </Button>
                     </div>
                   </div>
-                  <Progress 
-                    value={(habit.days_count / 30) * 100} 
-                    className={`w-full ${habit.is_healthy ? 'bg-green-200 dark:bg-green-900' : 'bg-red-200 dark:bg-red-900'}`}
+                  <Progress
+                    value={(habit.daysCount / 30) * 100}
+                    className={`w-full ${habit.isHealthy ? 'bg-green-200 dark:bg-green-900' : 'bg-red-200 dark:bg-red-900'}`}
                   />
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    {t.createdOn} {new Date(habit.creation_date).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                    {t.createdOn} {new Date(habit.creationDate).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
                   </p>
                 </CardContent>
               </Card>
