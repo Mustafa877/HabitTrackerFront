@@ -11,7 +11,7 @@ export const api = {
         return res.json();
     },
 
-    async post(endpoint: string, body: any, token?: string) {
+    async post(endpoint: string, body: unknown, token?: string) {
         const res = await fetch(`${API_URL}${endpoint}`, {
             method: "POST",
             headers: {
@@ -25,14 +25,15 @@ export const api = {
             try {
                 const err = await res.json();
                 throw new Error(err.message || err.title || "Error");
-            } catch (e: any) {
-                throw new Error(e.message || await res.text());
+            } catch (e) {
+                const message = e instanceof Error ? e.message : "Error";
+                throw new Error(message || await res.text());
             }
         }
         return res.json();
     },
 
-    async put(endpoint: string, body: any, token?: string) {
+    async put(endpoint: string, body: unknown, token?: string) {
         const res = await fetch(`${API_URL}${endpoint}`, {
             method: "PUT",
             headers: {

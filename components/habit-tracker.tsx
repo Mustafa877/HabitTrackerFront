@@ -229,7 +229,7 @@ export function HabitTracker() {
   const [filter, setFilter] = useState<Filter>("all")
   const [remindersEnabled, setRemindersEnabled] = useState(false)
   const [user, setUser] = useState<User | null>(null)
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
   const { toasts } = useToasterStore()
 
   const t = translations[lang]
@@ -362,9 +362,13 @@ export function HabitTracker() {
         setIsHealthy(false)
         setCurrentPage(Math.ceil((habits.length + 1) / ITEMS_PER_PAGE))
         setFilter("all")
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error adding habit:', error)
-        toast.error(error.message, { duration: 2000 })
+        if (error instanceof Error) {
+          toast.error(error.message, { duration: 2000 })
+        } else {
+          toast.error("An error occurred", { duration: 2000 })
+        }
       }
     } else {
       toast.error(t.enterHabitError, { duration: 2000 })
@@ -385,9 +389,13 @@ export function HabitTracker() {
         const updatedHabits = habits.filter((habit) => habit.id !== habitToDelete)
         setHabits(updatedHabits)
         toast(t.habitRemoved, { icon: "🗑️", duration: 2000 })
-      } catch (error: any) {
+      } catch (error) {
         console.error('Error deleting habit:', error)
-        toast.error(error.message, { duration: 2000 })
+        if (error instanceof Error) {
+          toast.error(error.message, { duration: 2000 })
+        } else {
+          toast.error("An error occurred", { duration: 2000 })
+        }
       }
       setDeleteConfirmOpen(false)
       setHabitToDelete(null)
@@ -406,9 +414,13 @@ export function HabitTracker() {
       await api.delete("/habits", token!)
       setHabits([])
       toast.success(t.habitRemoved, { duration: 2000 })
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error resetting habits:', error)
-      toast.error(error.message, { duration: 2000 })
+      if (error instanceof Error) {
+        toast.error(error.message, { duration: 2000 })
+      } else {
+        toast.error("An error occurred", { duration: 2000 })
+      }
     }
     setResetConfirmOpen(false)
   }
@@ -456,9 +468,13 @@ export function HabitTracker() {
           icon: '🎉',
         })
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating habit:', error)
-      toast.error(error.message, { duration: 2000 })
+      if (error instanceof Error) {
+        toast.error(error.message, { duration: 2000 })
+      } else {
+        toast.error("An error occurred", { duration: 2000 })
+      }
     }
   }
 
@@ -479,9 +495,13 @@ export function HabitTracker() {
         habit.id === id ? { ...habit, daysCount: habit.daysCount - 1 } : habit
       )
       setHabits(updatedHabits)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating habit:', error)
-      toast.error(error.message, { duration: 2000 })
+      if (error instanceof Error) {
+        toast.error(error.message, { duration: 2000 })
+      } else {
+        toast.error("An error occurred", { duration: 2000 })
+      }
     }
   }
 
@@ -498,9 +518,13 @@ export function HabitTracker() {
         duration: 2000,
         icon: '🎉',
       })
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error incrementing all habits:', error)
-      toast.error(error.message, { duration: 2000 })
+      if (error instanceof Error) {
+        toast.error(error.message, { duration: 2000 })
+      } else {
+        toast.error("An error occurred", { duration: 2000 })
+      }
     }
   }
 
@@ -615,7 +639,7 @@ export function HabitTracker() {
               onSuccess={(token, user) => {
                 localStorage.setItem("token", token)
                 localStorage.setItem("user", JSON.stringify(user))
-                setUser(user)
+                setUser(user as User)
                 fetchHabits()
               }}
             />
@@ -639,7 +663,7 @@ export function HabitTracker() {
                 <TooltipTrigger asChild>
                   <Button variant="ghost" className="p-1 sm:p-2">
                     <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
-                      <AvatarImage src={avatarUrl || user?.avatarUrl} alt="User avatar" />
+                      <AvatarImage src={user?.avatarUrl} alt="User avatar" />
                       <AvatarFallback>{user?.fullName?.[0] || user?.email?.[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
                   </Button>

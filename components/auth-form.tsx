@@ -4,14 +4,14 @@ import { useState } from "react"
 import { GoogleLogin } from "@react-oauth/google"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { toast } from "react-hot-toast"
 import { api } from "@/lib/api"
 import { motion } from "framer-motion"
 
 interface AuthFormProps {
-    onSuccess: (token: string, user: any) => void
+    onSuccess: (token: string, user: unknown) => void
     lang: "en" | "ar"
 }
 
@@ -78,8 +78,12 @@ export function AuthForm({ onSuccess, lang = "en" }: AuthFormProps) {
                 toast.success(t.accountCreated)
                 setIsLogin(true)
             }
-        } catch (error: any) {
-            toast.error(error.message)
+        } catch (error) {
+            if (error instanceof Error) {
+                toast.error(error.message)
+            } else {
+                toast.error("An error occurred")
+            }
         } finally {
             setLoading(false)
         }
@@ -165,8 +169,12 @@ export function AuthForm({ onSuccess, lang = "en" }: AuthFormProps) {
                                             const data = await api.post("/auth/google-login", { idToken: credentialResponse.credential })
                                             onSuccess(data.token, data.user)
                                             toast.success(t.welcomeBack)
-                                        } catch (error: any) {
-                                            toast.error(error.message)
+                                        } catch (error) {
+                                            if (error instanceof Error) {
+                                                toast.error(error.message)
+                                            } else {
+                                                toast.error("Google login failed")
+                                            }
                                         }
                                     }}
                                     onError={() => {
