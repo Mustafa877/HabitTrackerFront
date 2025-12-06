@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:5000/api";
+const API_URL = "http://91.121.231.195:1003/api";
 
 export const api = {
     async get(endpoint: string, token?: string) {
