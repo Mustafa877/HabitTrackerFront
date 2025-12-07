@@ -1,4 +1,8 @@
-const API_URL = "http://91.121.231.195:1003/api";
+// In production (Netlify), use relative path to simple proxy (avoiding Mixed Content)
+// In development, use the direct URL
+const API_URL = process.env.NODE_ENV === 'production'
+    ? "/api"
+    : "http://91.121.231.195:1003/api";
 
 export const api = {
     async get(endpoint: string, token?: string) {
