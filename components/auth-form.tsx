@@ -182,7 +182,7 @@ export function AuthForm({ onSuccess, lang = "en" }: AuthFormProps) {
                                     }}
                                     locale={lang}
                                     shape="circle"
-                                    width="100%"
+                                    width="300"
                                 />
                             </div>
                         </div>
