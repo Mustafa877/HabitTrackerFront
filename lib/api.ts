@@ -1,6 +1,6 @@
 // In production (Netlify), use relative path to simple proxy (avoiding Mixed Content)
 // In development, use the direct URL
-const API_URL = "http://91.121.231.195:1003/api";
+const API_URL = "http://habit-api.mustafadev.com/api";
 
 export const api = {
     async get(endpoint: string, token?: string) {
