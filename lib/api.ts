@@ -2,7 +2,7 @@
 // In development, use the direct URL
 const API_URL = process.env.NODE_ENV === 'production'
     ? "/api"
-    : "http://91.121.231.195:1003/api";
+    : "http://habit-api.mustafadev.com/api";
 
 export const api = {
     async get(endpoint: string, token?: string) {
