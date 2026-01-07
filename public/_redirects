@@ -1,5 +1,5 @@
 # Proxy API requests to backend to avoid Mixed Content error
-/api/*  http://91.121.231.195:1003/api/:splat  200
+/api/*  https://habit-api.mustafadev.com/api/:splat  200
 
 # Fallback for SPA routing (optional but good practice for static exports on Netlify)
 /*  /index.html  200
